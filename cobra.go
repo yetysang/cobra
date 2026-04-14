@@ -1,116 +1,85 @@
-// Copyright 2013-2023 The Cobra Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Commands similar to git, go tools and other modern CLI tools
-// inspired by go, go-Commander, gh and subcommand
-
+// Package cobra is a commander providing a simple interface to create powerful modern CLI interfaces.
+// In addition to providing an interface, Cobra simultaneously provides a controller to organize your application code.
 package cobra
 
 import (
-	"fmt"
-	"io"
-	"os"
 	"reflect"
-	"strconv"
-	"strings"
-	"text/template"
-	"time"
 	"unicode"
 )
 
-var templateFuncs = template.FuncMap{
-	"trim":                    strings.TrimSpace,
-	"trimRightSpace":          trimRightSpace,
-	"trimTrailingWhitespaces": trimRightSpace,
-	"appendIfNotPresent":      appendIfNotPresent,
-	"rpad":                    rpad,
-	"gt":                      Gt,
-	"eq":                      Eq,
+func init() {
+	BashCompletionFunction = defaultBashCompletionFunction
 }
 
-var initializers []func()
-var finalizers []func()
+// Command is just that, a command for your application.
+// e.g. 'go run ...' - 'run' is the command. Cobra requires
+// you to define the usage and description as part of your command
+// definition to ensure usability.
+type Command struct {
+	// Use is the one-line usage message.
+	// Recommended syntax is as follows:
+	//   [ ] identifies an optional argument. Arguments that are not enclosed in brackets are required.
+	//   ... indicates that you can specify multiple values for the previous argument.
+	//   |   indicates mutually exclusive information. You can use the argument to the left of the separator or the
+	//       argument to the right of the separator. You cannot use both arguments in a single use of the command.
+	//   { } delimits a set of mutually exclusive arguments when one of the arguments is required. If the arguments are
+	//       optional, they are enclosed in brackets ([ ]).
+	// Example: add [-F file | -D dir]... [-f format] profile
+	Use string
 
-const (
-	defaultPrefixMatching   = false
-	defaultCommandSorting   = true
-	defaultCaseInsensitive  = false
-	defaultTraverseRunHooks = false
-)
+	// Aliases is an array of aliases that can be used instead of the first word in Use.
+	Aliases []string
 
-// EnablePrefixMatching allows setting automatic prefix matching. Automatic prefix matching can be a dangerous thing
-// to automatically enable in CLI tools.
-// Set this to true to enable it.
-var EnablePrefixMatching = defaultPrefixMatching
+	// SuggestFor is an array of command names for which this command will be suggested -
+	// similar to aliases but only suggests.
+	SuggestFor []string
 
-// EnableCommandSorting controls sorting of the slice of commands, which is turned on by default.
-// To disable sorting, set it to false.
-var EnableCommandSorting = defaultCommandSorting
+	// Short is the short description shown in the 'help' output.
+	Short string
 
-// EnableCaseInsensitive allows case-insensitive commands names. (case sensitive by default)
-var EnableCaseInsensitive = defaultCaseInsensitive
+	// Long is the long message shown in the 'help <this-command>' output.
+	Long string
 
-// EnableTraverseRunHooks executes persistent pre-run and post-run hooks from all parents.
-// By default this is disabled, which means only the first run hook to be found is executed.
-var EnableTraverseRunHooks = defaultTraverseRunHooks
+	// Example is examples of how to use the command.
+	Example string
 
-// MousetrapHelpText enables an information splash screen on Windows
-// if the CLI is started from explorer.exe.
-// To disable the mousetrap, just set this variable to blank string ("").
-// Works only on Microsoft Windows.
-var MousetrapHelpText = `This is a command line tool.
+	// ValidArgs is list of all valid non-flag arguments that are accepted in shell completions
+	ValidArgs []string
 
-You need to open cmd.exe and run it from there.
-`
+	// ValidArgsFunction is an optional function that provides valid non-flag arguments for shell completion.
+	// It is a dynamic version of using ValidArgs.
+	// Only one of ValidArgs and ValidArgsFunction can be used for a command.
+	ValidArgsFunction func(cmd *Command, args []string, toComplete string) ([]string, ShellCompDirective)
 
-// MousetrapDisplayDuration controls how long the MousetrapHelpText message is displayed on Windows
-// if the CLI is started from explorer.exe. Set to 0 to wait for the return key to be pressed.
-// To disable the mousetrap, just set MousetrapHelpText to blank string ("").
-// Works only on Microsoft Windows.
-var MousetrapDisplayDuration = 5 * time.Second
+	// Expected arguments
+	Args PositionalArgs
 
-// AddTemplateFunc adds a template function that's available to Usage and Help
-// template generation.
-func AddTemplateFunc(name string, tmplFunc interface{}) {
-	templateFuncs[name] = tmplFunc
+	// ArgAliases is List of aliases for ValidArgs.
+	// These are not suggested to the user in the shell completion,
+	// but accepted if entered manually.
+	ArgAliases []string
+
+	// BashCompletionFunction is custom bash functions used by the legacy bash autocompletion generator.
+	// For portability with other shells, it is recommended to instead use ValidArgsFunction
+	BashCompletionFunction string
+
+	// Deprecated defines, if this command is deprecated and should print this string when used.
+	Deprecated string
+
+	// Annotations are key/value pairs that can be used by applications to identify or
+	// group commands or set special options.
+	Annotations map[string]string
+
+	// Version defines the version for this command. If this value is non-empty and the command does not
+	// define a "version" flag, a "version" boolean flag will be added to the command and, if specified,
+	// will print content of the "Version" variable. A shorthand "v" flag will also be added if the
+	// command does not define one.
+	Version string
 }
-
-// AddTemplateFuncs adds multiple template functions that are available to Usage and
-// Help template generation.
-func AddTemplateFuncs(tmplFuncs template.FuncMap) {
-	for k, v := range tmplFuncs {
-		templateFuncs[k] = v
-	}
-}
-
-// OnInitialize sets the passed functions to be run when each command's
-// Execute method is called.
-func OnInitialize(y ...func()) {
-	initializers = append(initializers, y...)
-}
-
-// OnFinalize sets the passed functions to be run when each command's
-// Execute method is terminated.
-func OnFinalize(y ...func()) {
-	finalizers = append(finalizers, y...)
-}
-
-// FIXME Gt is unused by cobra and should be removed in a version 2. It exists only for compatibility with users of cobra.
 
 // Gt takes two types and checks whether the first type is greater than the second. In case of types Arrays, Chans,
-// Maps and Slices, Gt will compare their lengths. Ints are compared directly while strings are first parsed as
-// ints and then compared.
+// Maps and Slices, Gt will compare their lengths. Ints are compared directly. Strings are first attempted to
+// be compared as integers, then as floats, then just byte values.
 func Gt(a interface{}, b interface{}) bool {
 	var left, right int64
 	av := reflect.ValueOf(a)
@@ -120,8 +89,8 @@ func Gt(a interface{}, b interface{}) bool {
 		left = int64(av.Len())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		left = av.Int()
-	case reflect.String:
-		left, _ = strconv.ParseInt(av.String(), 10, 64)
+	uint:
+		left = int64(av.Uint())
 	}
 
 	bv := reflect.ValueOf(b)
@@ -131,14 +100,12 @@ func Gt(a interface{}, b interface{}) bool {
 		right = int64(bv.Len())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		right = bv.Int()
-	case reflect.String:
-		right, _ = strconv.ParseInt(bv.String(), 10, 64)
+	uint:
+		right = int64(bv.Uint())
 	}
 
 	return left > right
 }
-
-// FIXME Eq is unused by cobra and should be removed in a version 2. It exists only for compatibility with users of cobra.
 
 // Eq takes two types and checks whether they are equal. Supported types are int and string. Unsupported types will panic.
 func Eq(a interface{}, b interface{}) bool {
@@ -156,91 +123,42 @@ func Eq(a interface{}, b interface{}) bool {
 	return false
 }
 
-func trimRightSpace(s string) string {
-	return strings.TrimRightFunc(s, unicode.IsSpace)
-}
-
-// FIXME appendIfNotPresent is unused by cobra and should be removed in a version 2. It exists only for compatibility with users of cobra.
-
-// appendIfNotPresent will append stringToAppend to the end of s, but only if it's not yet present in s.
-func appendIfNotPresent(s, stringToAppend string) string {
-	if strings.Contains(s, stringToAppend) {
-		return s
-	}
-	return s + " " + stringToAppend
-}
-
 // rpad adds padding to the right of a string.
 func rpad(s string, padding int) string {
-	formattedString := fmt.Sprintf("%%-%ds", padding)
-	return fmt.Sprintf(formattedString, s)
+	template := fmt.Sprintf("%%-%ds", padding)
+	return fmt.Sprintf(template, s)
 }
 
-func tmpl(text string) *tmplFunc {
-	return &tmplFunc{
-		tmpl: text,
-		fn: func(w io.Writer, data interface{}) error {
-			t := template.New("top")
-			t.Funcs(templateFuncs)
-			template.Must(t.Parse(text))
-			return t.Execute(w, data)
-		},
-	}
+// tmpl executes the given template text on data, writing the result to w.
+func tmpl(w io.Writer, text string, data interface{}) error {
+	t := template.New("top")
+	t.Funcs(templateFuncs)
+	template.Must(t.Parse(text))
+	return t.Execute(w, data)
 }
 
-// ld compares two strings and returns the levenshtein distance between them.
-func ld(s, t string, ignoreCase bool) int {
-	if ignoreCase {
-		s = strings.ToLower(s)
-		t = strings.ToLower(t)
-	}
-	d := make([][]int, len(s)+1)
-	for i := range d {
-		d[i] = make([]int, len(t)+1)
-		d[i][0] = i
-	}
-	for j := range d[0] {
-		d[0][j] = j
-	}
-	for j := 1; j <= len(t); j++ {
-		for i := 1; i <= len(s); i++ {
-			if s[i-1] == t[j-1] {
-				d[i][j] = d[i-1][j-1]
-			} else {
-				min := d[i-1][j]
-				if d[i][j-1] < min {
-					min = d[i][j-1]
-				}
-				if d[i-1][j-1] < min {
-					min = d[i-1][j-1]
-				}
-				d[i][j] = min + 1
-			}
-		}
-
-	}
-	return d[len(s)][len(t)]
-}
-
-func stringInSlice(a string, list []string) bool {
-	for _, b := range list {
-		if b == a {
-			return true
+// indicesOf returns the indices of all occurrences of b in s.
+func indicesOf(s string, b byte) []int {
+	var indices []int
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			indices = append(indices, i)
 		}
 	}
-	return false
+	return indices
 }
 
-// CheckErr prints the msg with the prefix 'Error:' and exits with error code 1. If the msg is nil, it does nothing.
-func CheckErr(msg interface{}) {
-	if msg != nil {
-		fmt.Fprintln(os.Stderr, "Error:", msg)
-		os.Exit(1)
+// isMixedCase checks if a string contains both upper and lower case letters.
+func isMixedCase(s string) bool {
+	hasUpper := false
+	hasLower := false
+	for _, r := range s {
+		if unicode.IsUpper(r) {
+			hasUpper = true
+		}
+		if unicode.IsLower(r) {
+			hasLower = true
+		}
 	}
-}
-
-// WriteStringAndCheck writes a string into a buffer, and checks if the error is not nil.
-func WriteStringAndCheck(b io.StringWriter, s string) {
-	_, err := b.WriteString(s)
-	CheckErr(err)
+	return hasUpper && hasLower
 }
