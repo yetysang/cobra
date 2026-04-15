@@ -33,3 +33,4 @@ Changes to this document and the contents therein are at the discretion of the m
 > **Fork-specific notes:**
 > - I'm using this fork to experiment with custom completion behaviors and flag parsing.
 > - Upstream issues I'm tracking: spf13/cobra#1810, spf13/cobra#1956
+> - Added a local patch to default `TraverseRunHooks` to `true` for my CLI tools (see `command.go`).
