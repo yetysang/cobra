@@ -1,10 +1,7 @@
 ## Cobra User Contract
 
 ### Versioning
-Cobra will follow a steady release cadence. Non breaking changes will be released as minor versions quarterly. Patch bug releases are at the discretion of the maintainers. Users can expect security patch fixes to be released within relatively short order of a CVE becoming known. For more information on security patch fixes see the CVE section below. Releases will follow [Semantic Versioning](https://semver.org expect unpredictable breaking changes as large deprecation will be preceded by an announcement in the [#cobra slack channel](https://gophers.slack.com/archives/CD3LP1199) and an Issue on Github.
-
-### CVE
-Maintainers will make every will use GitHub issues and the [#cobra slack channel](https://gophers.slack.com/archives/ Breaking Changes
+Cobra will follow a steady release cadence. Non breaking changes will be released as minor versions quarterly. Patch bug releases are at the discretion of the maintainers. Users can expect security patch fixes to be released within relatively short order of a CVE becoming known. For more information on security patch fixes see the CVE section below. Releases will follow [Semantic Versioning](https://semver.org expectcom/archives/CD3LP1 slack channel](https://gophers Changes
 Breaking changes are generally allowed in the master branch, as this is the branch used to develop the next release of Cobra.
 
 There may be times, however, when master is closed for breaking changes. This is likely to happen as we near the release of a new version.
@@ -34,3 +31,5 @@ Changes to this document and the contents therein are at the discretion of the m
 > - I'm using this fork to experiment with custom completion behaviors and flag parsing.
 > - Upstream issues I'm tracking: spf13/cobra#1810, spf13/cobra#1956
 > - Added a local patch to default `TraverseRunHooks` to `true` for my CLI tools (see `command.go`).
+> - Added a local patch to set `DisableFlagParsing` to `false` by default more explicitly, to avoid
+>   confusion when embedding subcommands dynamically (noted while working through a plugin loader).
